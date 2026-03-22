@@ -3,7 +3,7 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer
 
 from configuration import config
 from utils import Neo4jWriter, MysqlReader  # 保持和TableSynchronizer一致的导入路径
-from models.ner.predict import Predictor
+from src.ner.predict import Predictor
 
 
 # 构建文本信息同步器（和TableSynchronizer的注释风格一致）
@@ -16,7 +16,7 @@ class TextSynchronizer:
     def _init_extractor(self):
         model = AutoModelForTokenClassification.from_pretrained(str(config.CHECKPOINT_DIR / 'ner' / 'best_model'))
         tokenizer = AutoTokenizer.from_pretrained(str(config.CHECKPOINT_DIR / 'ner' / 'best_model'))
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device('cpu')
         return Predictor(model, tokenizer, device)
 
     def sync_spu_desc(self):

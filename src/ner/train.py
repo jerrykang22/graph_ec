@@ -11,14 +11,24 @@ from transformers import (
     AutoTokenizer
 )
 import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import threading
 from configuration import config
 from configuration.config import MODEL_NAME, LABELS, CHECKPOINT_DIR, NER_DIR, LOG_DIR, EPOCHS
 
-# ========== 1. 开启详细日志 + 心跳线程（关键：证明程序没卡死） ==========
+# ========== [修改点 1]: 配置 Python 基础日志，同时输出到屏幕和文件 ==========
+# 确保存放日志的目录存在
+os.makedirs(config.LOG_DIR, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        # 将带有 ✅ 和 ❤️ 的日志保存到文件
+        logging.FileHandler(config.LOG_DIR / "ner_training_console.log", encoding="utf-8"),
+        # 同时在终端屏幕上打印
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -71,12 +81,12 @@ except Exception as e:
     logger.error(f"❌ 数据集格式错误：{e}", exc_info=True)
     exit(1)
 
-# ========== 4. 训练参数（极致轻量化，加快首次迭代） ==========
+# ========== 4. 训练参数 ==========
 logger.info("✅ 初始化训练参数...")
 args = TrainingArguments(
     output_dir=str(CHECKPOINT_DIR / NER_DIR),
     logging_dir=str(config.LOG_DIR / 'ner'),
-    num_train_epochs=1,
+    num_train_epochs=3,
     per_device_train_batch_size=1,
     use_cpu=True,
     fp16=False,
@@ -90,8 +100,10 @@ args = TrainingArguments(
     metric_for_best_model='eval_overall_f1',
     load_best_model_at_end=True,
     disable_tqdm=False,
-    report_to="none",
-    max_steps=5,  # 只跑5步，极致缩短首次验证时间
+    # ========== [修改点 2]: 开启 TensorBoard 日志记录 ==========
+    report_to="tensorboard",  # 这里把原来的 "none" 改成了 "tensorboard"
+    # ==========================================================
+    #max_steps=5,  # 只跑5步，极致缩短首次验证时间
     gradient_accumulation_steps=1,  # 关闭梯度累积，加快计算
     remove_unused_columns=False,  # 减少数据处理耗时
 )
@@ -127,7 +139,7 @@ def compute_metrics(prediction: EvalPrediction) -> dict:
     }
 
 
-# ========== 6. 启动训练（最后一步，明确提示） ==========
+# ========== 6. 启动训练 ==========
 logger.info("✅ 所有初始化完成，开始训练！CPU首次迭代可能需要5-10分钟，心跳日志会持续打印...")
 trainer = Trainer(
     model=model,
